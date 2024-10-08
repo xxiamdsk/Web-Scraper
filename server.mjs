@@ -33,7 +33,7 @@ app.post("/download", (req, res) => {
     urls: [websiteUrl], // URL of the website to scrape
     directory: directoryName, // Automatically named directory
     recursive: false, // Disable recursive downloading to limit to the main page only
-    maxDepth: 10, // Set the maximum depth to 1 to limit it to the base URL
+    maxDepth: 5, // Set the maximum depth to 1 to limit it to the base URL
     filenameGenerator: "bySiteStructure",
     urlFilter: (url) => {
       // Only download resources from the base domain, excluding subdirectories
