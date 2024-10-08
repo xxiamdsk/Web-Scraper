@@ -9,6 +9,8 @@ import archiver from "archiver";
 const app = express();
 const port = 3000;
 
+let zipFilePath = ""; // Track the ZIP file path globally
+
 // Middleware
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static("public")); // Serve static files
@@ -64,7 +66,7 @@ app.post("/download", (req, res) => {
     .then(() => {
       console.log("Website successfully downloaded!");
       clearTimeout(timeoutId); // Clear the timeout if scraping completes in time
-      finalizeDownload();
+      finalizeDownload(res);
     })
     .catch((err) => {
       console.log("An error occurred:", err);
@@ -75,11 +77,11 @@ app.post("/download", (req, res) => {
   // Set the timeout to stop scraping after 5 minutes
   timeoutId = setTimeout(() => {
     console.log("Timeout reached! Stopping the scraping process.");
-    // Since website-scraper does not have a built-in stop function, we will finalize download process here
-    finalizeDownload();
+    // Since website-scraper does not have a built-in stop function, we will finalize the download process here
+    finalizeDownload(res);
   }, timeoutDuration);
 
-  const finalizeDownload = () => {
+  const finalizeDownload = (res) => {
     // Add watermark to HTML files
     const watermark = `<!-- Watermarked by Deepak Singh  ( www.github.com/xxiamdsk )  -->\n`;
 
@@ -105,21 +107,13 @@ app.post("/download", (req, res) => {
     traverseDirectory(directoryName);
 
     // Step 1: Zip the folder
-    const zipFilePath = path.join(__dirname, `SiteSnap.com.zip`);
+    zipFilePath = path.join(__dirname, `SiteSnap.com.zip`);
     const output = fs.createWriteStream(zipFilePath);
     const archive = archiver("zip", { zlib: { level: 9 } });
 
     output.on("close", () => {
       console.log(`${archive.pointer()} total bytes`);
       console.log("Website successfully zipped!");
-
-      // Step 2: Send a download link to the user
-      res.send(`
-        <h2>Website Successfully Downloaded!</h2>
-        <a href="/download-zip?filename=SiteSnap.com.zip" download>
-          <button>Download ZIP</button>
-        </a>
-      `);
     });
 
     archive.on("error", (err) => {
@@ -136,7 +130,16 @@ app.post("/download", (req, res) => {
   };
 });
 
-// Step 3: Serve the ZIP file
+// Step 3: Check if ZIP file is ready
+app.get("/check-zip", (req, res) => {
+  if (zipFilePath && fs.existsSync(zipFilePath)) {
+    res.json({ ready: true, filename: path.basename(zipFilePath) });
+  } else {
+    res.json({ ready: false });
+  }
+});
+
+// Step 4: Serve the ZIP file
 app.get("/download-zip", (req, res) => {
   const zipFilePath = path.join(__dirname, req.query.filename);
   res.download(zipFilePath, (err) => {

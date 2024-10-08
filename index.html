@@ -1,19 +1,62 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Download Website</title>
-</head>
+    <title>Website Downloader</title>
+    <style>
+        #loader {
+            display: none; /* Hidden by default */
+            position: fixed;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 1000;
+            font-size: 24px;
+        }
+    </style>
+    <script>
+        async function checkZipFile() {
+            try {
+                const response = await fetch("/check-zip"); // Check if ZIP file is ready
+                const data = await response.json();
 
+                if (data.ready) {
+                    document.getElementById("downloadButton").disabled = false; // Enable the button
+                    document.getElementById("downloadLink").href = `/download-zip?filename=${data.filename}`; // Set the download link
+                    document.getElementById("loader").style.display = "none"; // Hide the loader
+                } else {
+                    setTimeout(checkZipFile, 2000); // Poll every 2 seconds until ZIP is ready
+                }
+            } catch (error) {
+                console.error("Error checking ZIP file status:", error);
+            }
+        }
+
+        // Call the function to start checking ZIP status on page load
+        window.onload = function() {
+            const form = document.getElementById("downloadForm");
+            form.addEventListener("submit", () => {
+                document.getElementById("loader").style.display = "block"; // Show loader when form is submitted
+                document.getElementById("downloadButton").disabled = true; // Disable the button until ZIP is ready
+            });
+            checkZipFile(); // Start checking ZIP status
+        };
+    </script>
+</head>
 <body>
-    <h1>Enter a URL to Download</h1>
-    <form action="/download" method="POST">
+    <h1>Download Website</h1>
+    <form id="downloadForm" action="/download" method="POST">
         <label for="url">Website URL:</label>
         <input type="text" id="url" name="url" required>
-        <button type="submit">Download</button>
+        <button type="submit">Download Website</button>
     </form>
-</body>
 
+    <h2>Once the website is downloaded, you can download the ZIP file:</h2>
+    <a id="downloadLink" href="#" download>
+        <button id="downloadButton" disabled>Download ZIP</button>
+    </a>
+    
+    <div id="loader">Downloading...</div> <!-- Loader element -->
+</body>
 </html>
