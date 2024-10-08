@@ -27,24 +27,27 @@ app.post("/download", (req, res) => {
   const websiteUrl = req.body.url;
   const urlObj = new URL(websiteUrl);
   const domainName = urlObj.hostname.replace("www.", ""); // E.g., "example.com"
-  const directoryName = `./${domainName}`; // Directory named after the website
+  const directoryName = "./SiteSnap"; // Directory named after the website
 
   // Define options for scraping
   const options = {
     urls: [websiteUrl], // URL of the website to scrape
     directory: directoryName, // Automatically named directory
-    recursive: false, // Disable recursive downloading to limit to the main page only
-    maxDepth: 1, // Set the maximum depth to 5 to limit it to the base URL
+    recursive: true, // Enable recursive downloading
+    maxDepth: 35, // Set a higher max depth to include more pages
     filenameGenerator: "bySiteStructure",
-    urlFilter: (url) => {
-      return url === websiteUrl || !url.startsWith(`${websiteUrl}/`);
+
+    // Performance optimizations:
+    requestConcurrency: 20, // Increase the number of concurrent requests
+    maxRecursiveDepth: 15, // Limit how deep it will scrape
+    maxParallelRequests: 20, // Number of requests sent in parallel
+
+    urlFilter: function (url) {
+      // Filter to allow only the domain name and its subdirectories
+      const domain = new URL(websiteUrl).hostname;
+      return url.includes(domain);
     },
-    sources: [
-      { selector: "img", attr: "src" }, // Images
-      { selector: 'link[rel="stylesheet"]', attr: "href" }, // Stylesheets
-      { selector: "script", attr: "src" }, // JavaScript files
-      { selector: "a", attr: "href" }, // HTML links for internal pages
-    ],
+
     onResourceSaved: (resource) => {
       console.log(`Downloaded: ${resource.filename}`);
     },
@@ -53,73 +56,84 @@ app.post("/download", (req, res) => {
     },
   };
 
-  // Start scraping
+  // Start scraping with a timeout
+  let timeoutId;
+  const timeoutDuration = 5 * 60 * 1000; // 5 minutes in milliseconds
+
   scrape(options)
     .then(() => {
-      console.log("Main folder of the website successfully downloaded!");
-
-      // Add watermark to all HTML, CSS, and JS files
-      const watermark = `<!-- Watermarked by Deepak Singh -->\n`;
-
-      const addWatermark = (filePath) => {
-        const fileContent = fs.readFileSync(filePath, "utf8");
-        if (
-          filePath.endsWith(".html")
-          // || filePath.endsWith(".css") ||
-          // filePath.endsWith(".js")
-        ) {
-          const updatedContent = watermark + fileContent;
-          fs.writeFileSync(filePath, updatedContent, "utf8");
-        }
-      };
-
-      const traverseDirectory = (directory) => {
-        fs.readdirSync(directory).forEach((file) => {
-          const fullPath = path.join(directory, file);
-          if (fs.lstatSync(fullPath).isDirectory()) {
-            traverseDirectory(fullPath);
-          } else {
-            addWatermark(fullPath);
-          }
-        });
-      };
-
-      traverseDirectory(directoryName);
-
-      // Step 1: Zip the folder
-      const zipFilePath = path.join(__dirname, `${domainName}.zip`);
-      const output = fs.createWriteStream(zipFilePath);
-      const archive = archiver("zip", { zlib: { level: 9 } });
-
-      output.on("close", () => {
-        console.log(`${archive.pointer()} total bytes`);
-        console.log("Website successfully zipped!");
-
-        // Step 2: Send a download button to the user
-        res.send(`
-          <h2>Website Successfully Downloaded!</h2>
-          <a href="/download-zip?filename=${domainName}.zip" download>
-            <button>Download ZIP</button>
-          </a>
-        `);
-      });
-
-      archive.on("error", (err) => {
-        throw err;
-      });
-
-      archive.pipe(output);
-
-      // Add the directory to the archive
-      archive.directory(directoryName, false);
-
-      // Finalize the archive
-      archive.finalize();
+      console.log("Website successfully downloaded!");
+      clearTimeout(timeoutId); // Clear the timeout if scraping completes in time
+      finalizeDownload();
     })
     .catch((err) => {
       console.log("An error occurred:", err);
+      clearTimeout(timeoutId); // Clear the timeout on error
       res.send("An error occurred while downloading the website.");
     });
+
+  // Set the timeout to stop scraping after 5 minutes
+  timeoutId = setTimeout(() => {
+    console.log("Timeout reached! Stopping the scraping process.");
+    // Since website-scraper does not have a built-in stop function, we will finalize download process here
+    finalizeDownload();
+  }, timeoutDuration);
+
+  const finalizeDownload = () => {
+    // Add watermark to HTML files
+    const watermark = `<!-- Watermarked by Deepak Singh  ( www.github.com/xxiamdsk )  -->\n`;
+
+    const addWatermark = (filePath) => {
+      const fileContent = fs.readFileSync(filePath, "utf8");
+      if (filePath.endsWith(".html")) {
+        const updatedContent = watermark + fileContent;
+        fs.writeFileSync(filePath, updatedContent, "utf8");
+      }
+    };
+
+    const traverseDirectory = (directory) => {
+      fs.readdirSync(directory).forEach((file) => {
+        const fullPath = path.join(directory, file);
+        if (fs.lstatSync(fullPath).isDirectory()) {
+          traverseDirectory(fullPath);
+        } else {
+          addWatermark(fullPath);
+        }
+      });
+    };
+
+    traverseDirectory(directoryName);
+
+    // Step 1: Zip the folder
+    const zipFilePath = path.join(__dirname, `SiteSnap.com.zip`);
+    const output = fs.createWriteStream(zipFilePath);
+    const archive = archiver("zip", { zlib: { level: 9 } });
+
+    output.on("close", () => {
+      console.log(`${archive.pointer()} total bytes`);
+      console.log("Website successfully zipped!");
+
+      // Step 2: Send a download link to the user
+      res.send(`
+        <h2>Website Successfully Downloaded!</h2>
+        <a href="/download-zip?filename=SiteSnap.com.zip" download>
+          <button>Download ZIP</button>
+        </a>
+      `);
+    });
+
+    archive.on("error", (err) => {
+      throw err;
+    });
+
+    archive.pipe(output);
+
+    // Add the directory to the archive
+    archive.directory(directoryName, false); // Use false to not include the parent folder
+
+    // Finalize the archive
+    archive.finalize();
+  };
 });
 
 // Step 3: Serve the ZIP file
