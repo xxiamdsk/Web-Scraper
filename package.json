@@ -1,12 +1,10 @@
 {
   "dependencies": {
     "body-parser": "^1.20.3",
-    "type": "module",
     "express": "^4.21.0",
     "website-scraper": "^5.3.1"
   },
   "devDependencies": {
-    "type": "module",
     "@types/express": "^5.0.0",
     "@types/website-scraper": "^1.2.10"
   }
