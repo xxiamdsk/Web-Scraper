@@ -2,16 +2,16 @@ import express from "express";
 import bodyParser from "body-parser";
 import scrape from "website-scraper";
 import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
 import archiver from "archiver";
+import pdf from "html-pdf"; // Import html-pdf for PDF generation
+import { fileURLToPath } from "url";
+import path from "path";
+import { exec } from "child_process";
 
 const app = express();
-const port = 3000;
+const PORT = 3000;
 
-let zipFilePath = ""; // Track the ZIP file path globally
-
-// Middleware
+app.use(express.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static("public")); // Serve static files
 
@@ -24,122 +24,7 @@ app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "index.html"));
 });
 
-// Handle form submission
-app.post("/download", (req, res) => {
-  const websiteUrl = req.body.url;
-  const urlObj = new URL(websiteUrl);
-  const domainName = urlObj.hostname.replace("www.", ""); // E.g., "example.com"
-  const directoryName = "./SiteSnap"; // Directory named after the website
-
-  // Define options for scraping
-  const options = {
-    urls: [websiteUrl], // URL of the website to scrape
-    directory: directoryName, // Automatically named directory
-    recursive: true, // Enable recursive downloading
-    maxDepth: 35, // Set a higher max depth to include more pages
-    filenameGenerator: "bySiteStructure",
-
-    // Performance optimizations:
-    requestConcurrency: 20, // Increase the number of concurrent requests
-    maxRecursiveDepth: 15, // Limit how deep it will scrape
-    maxParallelRequests: 20, // Number of requests sent in parallel
-
-    urlFilter: function (url) {
-      // Filter to allow only the domain name and its subdirectories
-      const domain = new URL(websiteUrl).hostname;
-      return url.includes(domain);
-    },
-
-    onResourceSaved: (resource) => {
-      console.log(`Downloaded: ${resource.filename}`);
-    },
-    onResourceError: (resource, err) => {
-      console.log(`Error downloading ${resource.url}: ${err}`);
-    },
-  };
-
-  // Start scraping with a timeout
-  let timeoutId;
-  const timeoutDuration = 5 * 60 * 1000; // 5 minutes in milliseconds
-
-  scrape(options)
-    .then(() => {
-      console.log("Website successfully downloaded!");
-      clearTimeout(timeoutId); // Clear the timeout if scraping completes in time
-      finalizeDownload(res);
-    })
-    .catch((err) => {
-      console.log("An error occurred:", err);
-      clearTimeout(timeoutId); // Clear the timeout on error
-      res.send("An error occurred while downloading the website.");
-    });
-
-  // Set the timeout to stop scraping after 5 minutes
-  timeoutId = setTimeout(() => {
-    console.log("Timeout reached! Stopping the scraping process.");
-    // Since website-scraper does not have a built-in stop function, we will finalize the download process here
-    finalizeDownload(res);
-  }, timeoutDuration);
-
-  const finalizeDownload = (res) => {
-    // Add watermark to HTML files
-    const watermark = `<!-- Watermarked by Deepak Singh  ( www.github.com/xxiamdsk )  -->\n`;
-
-    const addWatermark = (filePath) => {
-      const fileContent = fs.readFileSync(filePath, "utf8");
-      if (filePath.endsWith(".html")) {
-        const updatedContent = watermark + fileContent;
-        fs.writeFileSync(filePath, updatedContent, "utf8");
-      }
-    };
-
-    const traverseDirectory = (directory) => {
-      fs.readdirSync(directory).forEach((file) => {
-        const fullPath = path.join(directory, file);
-        if (fs.lstatSync(fullPath).isDirectory()) {
-          traverseDirectory(fullPath);
-        } else {
-          addWatermark(fullPath);
-        }
-      });
-    };
-
-    traverseDirectory(directoryName);
-
-    // Step 1: Zip the folder
-    zipFilePath = path.join(__dirname, `SiteSnap.com.zip`);
-    const output = fs.createWriteStream(zipFilePath);
-    const archive = archiver("zip", { zlib: { level: 9 } });
-
-    output.on("close", () => {
-      console.log(`${archive.pointer()} total bytes`);
-      console.log("Website successfully zipped!");
-    });
-
-    archive.on("error", (err) => {
-      throw err;
-    });
-
-    archive.pipe(output);
-
-    // Add the directory to the archive
-    archive.directory(directoryName, false); // Use false to not include the parent folder
-
-    // Finalize the archive
-    archive.finalize();
-  };
-});
-
-// Step 3: Check if ZIP file is ready
-app.get("/check-zip", (req, res) => {
-  if (zipFilePath && fs.existsSync(zipFilePath)) {
-    res.json({ ready: true, filename: path.basename(zipFilePath) });
-  } else {
-    res.json({ ready: false });
-  }
-});
-
-// Step 4: Serve the ZIP file
+// Serve the ZIP file
 app.get("/download-zip", (req, res) => {
   const zipFilePath = path.join(__dirname, req.query.filename);
   res.download(zipFilePath, (err) => {
@@ -149,7 +34,114 @@ app.get("/download-zip", (req, res) => {
   });
 });
 
+// Function to create ZIP
+const createZip = (directory, output) => {
+  return new Promise((resolve, reject) => {
+    const outputZip = fs.createWriteStream(output);
+    const archive = archiver("zip", { zlib: { level: 9 } });
+
+    outputZip.on("close", () => resolve(output));
+    archive.on("error", (err) => reject(err));
+
+    archive.pipe(outputZip);
+    archive.directory(directory, false); // Don't include the parent directory
+    archive.finalize();
+  });
+};
+
+// Function to create PDF
+const createPDF = (directory, output) => {
+  return new Promise((resolve, reject) => {
+    const htmlFilePath = path.join(directory, "index.html"); // Make sure this file exists
+    pdf
+      .create(fs.readFileSync(htmlFilePath, "utf8"))
+      .toFile(output, (err, res) => {
+        if (err) reject(err);
+        resolve(res.filename);
+      });
+  });
+};
+
+// Function to create DOCX using pandoc
+const createDocx = (dir, output) => {
+  return new Promise((resolve, reject) => {
+    const htmlFilePath = path.join(dir, "index.html"); // Make sure this file exists
+    const command = `pandoc ${htmlFilePath} -o ${output}`;
+    exec(command, (err) => {
+      if (err) reject(err);
+      resolve(output);
+    });
+  });
+};
+
+// Helper function to extract the domain from the URL
+const getDomainFromUrl = (urlString) => {
+  try {
+    const url = new URL(urlString);
+    return url.hostname.replace("www.", ""); // Remove 'www.' if present
+  } catch (error) {
+    throw new Error("Invalid URL");
+  }
+};
+
+// POST route to handle download requests
+app.post("/download", async (req, res) => {
+  const { url, format } = req.body; // Extract 'url' and 'format' from request body
+
+  if (!url || !format) {
+    return res.status(400).send("URL and format are required");
+  }
+
+  try {
+    // Get domain name and use it as the directory name
+    const domain = getDomainFromUrl(url);
+    const directory = `./SiteSnap`; // Directory specific to the domain
+    const outputFile = `./downloaded-website.${format}`;
+
+    // Scrape the website
+    await scrape({
+      urls: [url],
+      urlFilter: (scrapedUrl) => {
+        const domainName = getDomainFromUrl(scrapedUrl);
+        return domainName === domain; // Ensure only URLs from the same domain are included
+      },
+      recursive: true,
+      maxDepth: 50,
+      prettifyUrls: true,
+      filenameGenerator: "bySiteStructure",
+      directory: directory, // Save files to the domain-specific directory
+    });
+
+    // Generate the requested format (ZIP, PDF, Word)
+    if (format === "zip") {
+      await createZip(directory, outputFile);
+    } else if (format === "pdf") {
+      const dir = directory + "/" + domain;
+      await createPDF(dir, outputFile);
+    } else if (format === "word") {
+      const dir = directory + "/" + domain;
+      await createDocx(dir, outputFile);
+    } else {
+      return res.status(400).send("Unsupported format");
+    }
+
+    // Send the file to the client
+    res.download(outputFile, (err) => {
+      if (err) {
+        res.status(500).send("Error in sending the file.");
+      } else {
+        // Optionally delete the files after download
+        fs.unlinkSync(outputFile);
+        fs.rmdirSync(directory, { recursive: true }); // Clean up the domain folder after download
+      }
+    });
+  } catch (error) {
+    console.error("Error:", error);
+    res.status(500).send("An error occurred while processing the request.");
+  }
+});
+
 // Start the server
-app.listen(port, () => {
-  console.log(`Server is running at http://localhost:${port}`);
+app.listen(PORT, () => {
+  console.log(`Server is running on http://localhost:${PORT}`);
 });

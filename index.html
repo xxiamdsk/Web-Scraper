@@ -1,62 +1,153 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Website Downloader</title>
     <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            /* Full viewport height */
+            margin: 0;
+            /* Remove default margin */
+            background-color: #f9f9f9;
+            /* Light background */
+        }
+
+        .container {
+            max-width: 500px;
+            padding: 20px;
+            background-color: #fff;
+            /* White background for the form */
+            border-radius: 8px;
+            /* Rounded corners */
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            /* Subtle shadow */
+        }
+
+        .container h1 {
+            text-align: center;
+        }
+
+        form {
+            display: flex;
+            flex-direction: column;
+        }
+
+        input,
+        select,
+        button {
+            margin: 10px 0;
+            padding: 10px;
+        }
+
+        /* Loader Styles */
         #loader {
-            display: none; /* Hidden by default */
+            display: none;
+            /* Hidden by default */
             position: fixed;
             left: 50%;
             top: 50%;
             transform: translate(-50%, -50%);
             z-index: 1000;
-            font-size: 24px;
         }
-    </style>
-    <script>
-        async function checkZipFile() {
-            try {
-                const response = await fetch("/check-zip"); // Check if ZIP file is ready
-                const data = await response.json();
 
-                if (data.ready) {
-                    document.getElementById("downloadButton").disabled = false; // Enable the button
-                    document.getElementById("downloadLink").href = `/download-zip?filename=${data.filename}`; // Set the download link
-                    document.getElementById("loader").style.display = "none"; // Hide the loader
-                } else {
-                    setTimeout(checkZipFile, 2000); // Poll every 2 seconds until ZIP is ready
-                }
-            } catch (error) {
-                console.error("Error checking ZIP file status:", error);
+        #loader div {
+            width: 50px;
+            height: 50px;
+            border: 5px solid #f3f3f3;
+            /* Light gray */
+            border-top: 5px solid #3498db;
+            /* Blue */
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
             }
         }
-
-        // Call the function to start checking ZIP status on page load
-        window.onload = function() {
-            const form = document.getElementById("downloadForm");
-            form.addEventListener("submit", () => {
-                document.getElementById("loader").style.display = "block"; // Show loader when form is submitted
-                document.getElementById("downloadButton").disabled = true; // Disable the button until ZIP is ready
-            });
-            checkZipFile(); // Start checking ZIP status
-        };
-    </script>
+    </style>
 </head>
-<body>
-    <h1>Download Website</h1>
-    <form id="downloadForm" action="/download" method="POST">
-        <label for="url">Website URL:</label>
-        <input type="text" id="url" name="url" required>
-        <button type="submit">Download Website</button>
-    </form>
 
-    <h2>Once the website is downloaded, you can download the ZIP file:</h2>
-    <a id="downloadLink" href="#" download>
-        <button id="downloadButton" disabled>Download ZIP</button>
-    </a>
-    
-    <div id="loader">Downloading...</div> <!-- Loader element -->
+<body>
+    <div class="container">
+        <h1>Website Downloader</h1>
+        <form id="downloadForm">
+            <!-- URL Input Field -->
+            <label for="url">Enter Website URL:</label>
+            <input type="url" id="url" name="url" placeholder="https://www.example.com" required>
+
+            <!-- Format Selector (Dropdown) -->
+            <label for="format">Choose Download Format:</label>
+            <select id="format" name="format" required>
+                <option value="zip">ZIP</option>
+                <option value="pdf">PDF</option>
+                <option value="word">Word (DOCX)</option>
+            </select>
+
+            <!-- Submit Button -->
+            <button type="submit">Download</button>
+        </form>
+
+        <!-- Message display area -->
+        <div id="message"></div>
+    </div>
+
+    <!-- Loader -->
+    <div id="loader">
+        <div></div>
+    </div>
+
+    <script>
+        document.getElementById('downloadForm').addEventListener('submit', async function (event) {
+            event.preventDefault(); // Prevent form from submitting normally
+
+            const url = document.getElementById('url').value;
+            const format = document.getElementById('format').value;
+
+            if (!url || !format) {
+                alert("Please enter a URL and choose a format.");
+                return;
+            }
+
+            // Show loader
+            document.getElementById('loader').style.display = 'block';
+
+            const response = await fetch('/download', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'  // Ensure it's JSON
+                },
+                body: JSON.stringify({ url, format })  // Send URL and format as JSON
+            });
+
+            // Hide loader after response is received
+            document.getElementById('loader').style.display = 'none';
+
+            if (response.ok) {
+                const blob = await response.blob();
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = `website.${format}`;
+                link.click();
+            } else {
+                const errorMessage = await response.text();
+                document.getElementById('message').innerText = `Error: ${errorMessage}`;
+            }
+        });
+    </script>
 </body>
+
 </html>
