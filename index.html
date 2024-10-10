@@ -13,22 +13,16 @@
             align-items: center;
             justify-content: center;
             height: 100vh;
-            /* Full viewport height */
             margin: 0;
-            /* Remove default margin */
             background-color: #f9f9f9;
-            /* Light background */
         }
 
         .container {
             max-width: 500px;
             padding: 20px;
             background-color: #fff;
-            /* White background for the form */
             border-radius: 8px;
-            /* Rounded corners */
             box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-            /* Subtle shadow */
         }
 
         .container h1 {
@@ -50,7 +44,6 @@
         /* Loader Styles */
         #loader {
             display: none;
-            /* Hidden by default */
             position: fixed;
             left: 50%;
             top: 50%;
@@ -62,9 +55,7 @@
             width: 50px;
             height: 50px;
             border: 5px solid #f3f3f3;
-            /* Light gray */
             border-top: 5px solid #3498db;
-            /* Blue */
             border-radius: 50%;
             animation: spin 1s linear infinite;
         }
@@ -98,7 +89,7 @@
             </select>
 
             <!-- Submit Button -->
-            <button type="submit">Download</button>
+            <button type="submit" id="downloadButton">Download</button>
         </form>
 
         <!-- Message display area -->
@@ -116,6 +107,13 @@
 
             const url = document.getElementById('url').value;
             const format = document.getElementById('format').value;
+            const downloadButton = document.getElementById('downloadButton');
+            const messageDiv = document.getElementById('message');
+
+            // Clear previous error messages and reset button text
+            messageDiv.innerText = '';
+            downloadButton.innerText = 'Downloading...';
+            downloadButton.disabled = true; // Disable the button while downloading
 
             if (!url || !format) {
                 alert("Please enter a URL and choose a format.");
@@ -142,9 +140,15 @@
                 link.href = URL.createObjectURL(blob);
                 link.download = `website.${format}`;
                 link.click();
+
+                // Reset button after successful download
+                downloadButton.innerText = 'Download';
+                downloadButton.disabled = false;
             } else {
                 const errorMessage = await response.text();
-                document.getElementById('message').innerText = `Error: ${errorMessage}`;
+                messageDiv.innerText = `Error: ${errorMessage}`;
+                downloadButton.innerText = 'Try Again'; // Change button text to "Try Again"
+                downloadButton.disabled = false; // Enable the button again
             }
         });
     </script>
